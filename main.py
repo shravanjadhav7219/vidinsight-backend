@@ -1,64 +1,64 @@
-import os
-import time
-import asyncio
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from google import genai
-from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+import google.generativeai as genai
+import os
 
-limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="VidInsight Commercial Core Engine", version="2.5.0")
+app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# 🔒 सुरक्षित पद्धत: कोडमधून खरी API Key काढून टाकली आहे.
+# रेंडर सर्व्हर ही की (Key) त्याच्या Environment Variables मधून आपोआप वाचेल.
+GENAI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+if not GENAI_API_KEY:
+    # जर रेंडरवर की सेट नसेल, तर तात्पुरती एरर दाखवेल
+    raise RuntimeWarning("GEMINI_API_KEY environment variable is missing!")
 
-class ResearchRequest(BaseModel):
+genai.configure(api_key=GENAI_API_KEY)
+
+class AnalysisRequest(BaseModel):
     video_url: str
     language: str
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "engine": "Gemini-2.5-Flash-Enterprise"}
-
-async def get_gemini_report(video_url: str, target_language: str):
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("API Key missing on server setup!")
-    
-    client = genai.Client(api_key=api_key)
-    prompt = f"Analyze this YouTube URL directly: {video_url}. Generate a 100-year deep historical research and truth verification report strictly in the '{target_language}' language. Structure it with Executive Summary, 100-Year History, Technical Verification, and Damage Risk Mitigation Solutions."
-    
-    loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(
-        None, 
-        lambda: client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-    )
-    return response.text
-
 @app.post("/api/v1/analyze")
-@limiter.limit("30/minute")
-async def analyze_video(request: ResearchRequest, fastapi_req: Request):
-    if not request.video_url or not request.language:
-        raise HTTPException(status_code=400, detail="Missing required parameters.")
+async def analyze_video(request: AnalysisRequest):
     try:
-        start_time = time.time()
-        report_output = await get_gemini_report(request.video_url, request.language)
-        execution_time = time.time() - start_time
-        return {
-            "status": "success",
-            "latency_seconds": round(execution_time, 2),
-            "report": report_output
-        }
+        model = genai.GenerativeModel('gemini-pro')
+        
+        prompt = f"""
+        तू एक अत्यंत प्रगत एआय संशोधन (AI Research Engine) आणि फॅक्ट-चेकर (Fact Checker) इंजीन आहेस.
+        तुला या व्हिडिओची लिंक दिली आहे: {request.video_url}
+        
+        तुझे काम या व्हिडिओचे सखोल विश्लेषण करून खालील मुद्द्यांनुसार अत्यंत अचूक माहिती {request.language} भाषेत देणे हे आहे. रिपोर्टचे स्वरूप व्यावसायिक असावे:
+        
+        📊 **भाग १: सखोल संशोधन अहवाल (Comprehensive Research Report)**
+        - **मुख्य विषय (Core Topic):** हा व्हिडिओ नक्की कोणत्या विषयावर आहे आणि त्याचे महत्त्व काय आहे?
+        - **सखोल विश्लेषण (In-depth Analysis):** या विषयाची पार्श्वभूमी काय आहे? बाजारपेठेतील चालू घडामोडी, ट्रेंड्स किंवा तांत्रिक बाजू काय सांगतात?
+        - **महत्त्वाची आकडेवारी (Key Data & Statistics):** या विषयाशी संबंधित उपलब्ध असलेली महत्त्वाची आकडेवारी किंवा तथ्ये स्पष्ट करा.
+        
+        🗣️ **भाग २: व्हिडिओमधील अचूक संभाषण व हेतू (Transcript & Intent Analysis)**
+        - **संभाषणाचा सारांश (Exact Dialogue Analysis):** व्हिडिओमध्ये नक्की काय बोलले गेले आहे? मुख्य व्यक्तीने कोणते विशिष्ट मुद्दे मांडले आहेत? (व्हिडिओला सबटायटल्स नसतील, तरी विषयानुसार संभाषणाचा अचूक गाभा द्या).
+        - **मुख्य शब्द (Keywords):** वक्त्याने कोणते महत्त्वाचे शब्द वारंवार वापरले आहेत?
+        - **हेतू (Intent):** वक्त्याचा हा व्हिडिओ बनवण्यामागचा खरा हेतू (उदा. प्रबोधन, जाहिरात, मतप्रदर्शन, अफवा पसरवणे) काय आहे?
+        
+        🔍 **भाग ३: सत्यता पडताळणी (Strict Fact Check)**
+        - **दावे विरुद्ध वास्तव (Claims vs Reality):** व्हिडिओमध्ये जे काही मोठे दावे (Claims) केले गेले आहेत, यांची यादी करा.
+        - **सत्यता पडताळणी (Fact Check Verdict):** इंटरनेटवरील उपलब्ध डेटा, अधिकृत सरकारी रिपोर्ट्स किंवा जागतिक माहितीच्या आधारे हे दावे तपासा. प्रत्येक दाव्यासमोर स्पष्टपणे 'सत्य (True)', 'अर्धसत्य (Partially True)' किंवा 'भ्रामक/अफवा (False/Misleading)' असे ठळकपणे लिहा आणि त्याचे कारण द्या.
+        
+        🎯 **भाग ४: अंतिम निष्कर्ष आणि सल्ला (Final Verdict & Recommendations)**
+        - हा व्हिडिओ आणि यातील माहिती किती विश्वासार्ह आहे? वापरकर्त्याने या माहितीचा वापर कसा करावा आणि कोणती काळजी घ्यावी?
+        
+        माहिती अत्यंत मुद्देसूद, स्पष्ट आणि आकर्षक फॉरमॅटमध्ये (Bullet Points आणि Bold Text वापरून) असावी. कोणतीही मनाची किंवा खोटी माहिती जोडू नकोस.
+        """
+        
+        response = model.generate_content(prompt)
+        
+        if response.text:
+            return {
+                "status": "success",
+                "report": response.text
+            }
+        else:
+            raise HTTPException(status_code=500, detail="AI रिसर्च रिपोर्ट तयार करू शकला नाही.")
+            
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Enterprise Engine Failure: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
